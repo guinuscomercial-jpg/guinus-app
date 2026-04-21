@@ -1,4 +1,4 @@
-ximport React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, query, deleteDoc } from 'firebase/firestore';
@@ -9,8 +9,8 @@ import {
   Upload, FileText, Users, List
 } from 'lucide-react';
 
-// --- CONFIGURACIÓN CLOUD (BLINDADA) ---
-const firebaseConfig = typeof import.meta.env.VITE_FIREBASE_CONFIG !== 'undefined' ? JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG) : {"apiKey":"AIzaSyC1nY16Syzk94PC7KcwrI_Y3IzY7v5bKzs","authDomain":"guinus-app.firebaseapp.com","projectId":"guinus-app","storageBucket":"guinus-app.firebasestorage.app","messagingSenderId":"180715341971","appId":"1:180715341971:web:48bf14583a085f4799e566"};
+// --- CONFIGURACIÓN CLOUD (Bconst firebaseConfig = typeof import.meta.env.VITE_FIREBASE_CONFIG ;const firebaseConfig = typeof import.meta.env.VITE_FIREBASE_CONFIG !== 'undefined' ? JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG) : { apiKey: "demo", projectId: "demo", appId: "demo" };
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -575,5 +575,4 @@ const App = () => {
 };
 
 export default App;
-cd ~/guinus-crm
 
