@@ -1,4 +1,4 @@
-ximport React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, query, deleteDoc } from 'firebase/firestore';
@@ -574,6 +574,5 @@ const App = () => {
   );
 };
 
-export default App;
-cd ~/guinus-crm
+export default App
 
