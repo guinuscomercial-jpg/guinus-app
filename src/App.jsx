@@ -1,578 +1,636 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, query, deleteDoc } from 'firebase/firestore';
-import { 
-  Mail, Phone, User, Package, Zap, Percent, Calculator, 
-  Brain, Star, Loader2, Clock, Copy, Send, MessageCircle, 
-  Plus, Trash2, ArrowLeft, FolderOpen, Save, Download, CheckCircle, Cloud,
-  Upload, FileText, Users, List
+import {
+  getFirestore, doc, setDoc, onSnapshot,
+  collection, addDoc, query, deleteDoc, orderBy
+} from 'firebase/firestore';
+import {
+  Package, Plus, Trash2, Edit2, Cloud, Loader2, CheckCircle,
+  MessageCircle, History, X, RotateCcw, Save,
+  ClipboardList, Star, ChevronDown, ChevronUp, Camera
 } from 'lucide-react';
 
-// --- CONFIGURACIÓN CLOUD (BLINDADA) ---
-const firebaseConfig = typeof import.meta.env.VITE_FIREBASE_CONFIG !== 'undefined' ? JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG) : {"apiKey":"AIzaSyC1nY16Syzk94PC7KcwrI_Y3IzY7v5bKzs","authDomain":"guinus-app.firebaseapp.com","projectId":"guinus-app","storageBucket":"guinus-app.firebasestorage.app","messagingSenderId":"180715341971","appId":"1:180715341971:web:48bf14583a085f4799e566"};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'guinus-crm-v2';
+const firebaseConfig = typeof import.meta.env.VITE_FIREBASE_CONFIG !== 'undefined'
+  ? JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG)
+  : { apiKey: "AIzaSyC1nY16Syzk94PC7KcwrI_Y3IzY7v5bKzs", authDomain: "guinus-app.firebaseapp.com", projectId: "guinus-app", storageBucket: "guinus-app.firebasestorage.app", messagingSenderId: "180715341971", appId: "1:180715341971:web:48bf14583a085f4799e566" };
 
-const App = () => {
-  // ESTADOS CRM Y NUBE
-  const [user, setUser] = useState(null);
-  const [savedClients, setSavedClients] = useState([]);
-  const [currentClientId, setCurrentClientId] = useState('nuevo');
-  const [saveStatus, setSaveStatus] = useState('idle');
-  const [view, setView] = useState('formulario'); // 'formulario' | 'presupuesto' | 'crm'
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
+const APP_ID = 'guinus-orders-v1';
 
-  // ESTADOS DEL CLIENTE ACTUAL
-  const [formData, setFormData] = useState({
-    clientName: '',
-    ref: '',
-    phone: '',
-    address: '',
-    discount: 0,
-    rentingMonths: 36,
-    items: [{ id: Date.now(), name: '', ref: '', price: '', quantity: 1, features: '', img: '', isPdf: false, fileName: '' }]
+const compressImage = (file) =>
+  new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 220;
+      const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+      canvas.width = img.width * ratio;
+      canvas.height = img.height * ratio;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.75));
+    };
+    img.src = URL.createObjectURL(file);
   });
 
-  const [aiInsight, setAiInsight] = useState("");
-  const [isAiLoading, setIsAiLoading] = useState(false);
+// ── PRODUCT FORM MODAL ─────────────────────────────────────────────────────────
+const ProductForm = ({ product, onSave, onClose }) => {
+  const [form, setForm] = useState({ name: '', price: '', photo: '', ...product });
+  const fileRef = useRef(null);
 
-  // 1. AUTENTICACIÓN SEGURA
+  const handleFile = async (e) => {
+    const file = e.target.files[0];
+    if (file) setForm(f => ({ ...f, photo: '' })) || setTimeout(async () => {
+      const compressed = await compressImage(file);
+      setForm(f => ({ ...f, photo: compressed }));
+    }, 0);
+    const compressed = await compressImage(file);
+    setForm(f => ({ ...f, photo: compressed }));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-[#1a1c20] rounded-t-3xl sm:rounded-3xl p-6 w-full sm:max-w-sm border border-slate-700 shadow-2xl">
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="font-black text-xl text-white">{product?.id ? 'Editar Producto' : 'Nuevo Producto'}</h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-white p-1"><X size={22} /></button>
+        </div>
+
+        {/* Photo picker */}
+        <div className="flex justify-center mb-5">
+          <div
+            className="w-28 h-28 rounded-2xl bg-slate-800 border-2 border-dashed border-slate-600 flex items-center justify-center cursor-pointer overflow-hidden relative group"
+            onClick={() => fileRef.current?.click()}
+          >
+            {form.photo ? (
+              <>
+                <img src={form.photo} alt="" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <Camera size={24} className="text-white" />
+                </div>
+              </>
+            ) : (
+              <div className="text-center text-slate-500">
+                <Camera size={28} className="mx-auto mb-1" />
+                <span className="text-xs font-bold">Foto</span>
+              </div>
+            )}
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1.5 tracking-widest">Nombre *</label>
+            <input
+              className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl font-bold text-white placeholder:text-slate-600 focus:outline-none focus:border-yellow-500"
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Ej. Coca-Cola 1L"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black text-slate-500 uppercase mb-1.5 tracking-widest">Precio por unidad (€)</label>
+            <input
+              className="w-full p-3 bg-slate-800 border border-slate-700 rounded-xl font-bold text-white placeholder:text-slate-600 focus:outline-none focus:border-yellow-500"
+              type="number"
+              step="0.01"
+              min="0"
+              value={form.price}
+              onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="flex-1 py-3.5 rounded-xl bg-slate-800 text-slate-400 font-black text-sm hover:bg-slate-700 transition-all">
+            Cancelar
+          </button>
+          <button
+            onClick={() => form.name.trim() && onSave(form)}
+            disabled={!form.name.trim()}
+            className="flex-1 py-3.5 rounded-xl bg-yellow-500 text-slate-900 font-black text-sm hover:bg-yellow-400 transition-all disabled:opacity-40"
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── MAIN APP ───────────────────────────────────────────────────────────────────
+const App = () => {
+  const [user, setUser] = useState(null);
+  const [view, setView] = useState('pedido');
+  const [saveStatus, setSaveStatus] = useState('idle');
+
+  // Catalog state
+  const [products, setProducts] = useState([]);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+
+  // Order state
+  const [orderLines, setOrderLines] = useState({});
+  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [orderNotes, setOrderNotes] = useState('');
+  const [suggestions, setSuggestions] = useState({});
+
+  // History state
+  const [orders, setOrders] = useState([]);
+  const [expandedOrder, setExpandedOrder] = useState(null);
+
+  // ── AUTH ──
   useEffect(() => {
-    const initAuth = async () => {
+    const init = async () => {
       try {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
         } else {
           await signInAnonymously(auth);
         }
-      } catch (err) {
-        console.error("Error de Autenticación:", err);
-      }
+      } catch (e) { console.error(e); }
     };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
+    init();
+    return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // 2. CARGAR HISTORIAL DE CLIENTES
+  // ── LOAD CATALOG ──
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'clients'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const clients = [];
-      snapshot.forEach((doc) => clients.push({ id: doc.id, ...doc.data() }));
-      setSavedClients(clients.sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated)));
-    }, (error) => {
-      console.error("Error de Base de Datos:", error);
+    const q = query(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'catalog'));
+    return onSnapshot(q, snap => {
+      const list = [];
+      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+      setProducts(list.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     });
-    return () => unsubscribe();
   }, [user]);
 
-  // 3. AUTO-GUARDADO
+  // ── LOAD ORDERS + COMPUTE SUGGESTIONS ──
   useEffect(() => {
-    if (!user || currentClientId === 'nuevo' || view === 'formulario') return;
-    const saveData = async () => {
-      setSaveStatus('saving');
-      try {
-        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'clients', currentClientId), {
-          ...formData,
-          lastUpdated: new Date().toISOString()
-        }, { merge: true });
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } catch (err) {
-        console.error("Error de Guardado:", err);
-        setSaveStatus('error');
-      }
-    };
-    const timeoutId = setTimeout(saveData, 1500);
-    return () => clearTimeout(timeoutId);
-  }, [formData, user, currentClientId, view]);
+    if (!user) return;
+    const q = query(
+      collection(db, 'artifacts', APP_ID, 'users', user.uid, 'orders'),
+      orderBy('date', 'desc')
+    );
+    return onSnapshot(q, snap => {
+      const list = [];
+      snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+      setOrders(list);
 
-  // --- FUNCIONES CRM ---
-  const handleLoadClient = (id) => {
-    setCurrentClientId(id);
-    if (id === 'nuevo') {
-      setFormData({
-        clientName: '', ref: '', phone: '', address: '', discount: 0, rentingMonths: 36,
-        items: [{ id: Date.now(), name: '', ref: '', price: '', quantity: 1, features: '', img: '', isPdf: false, fileName: '' }]
-      });
-      setView('formulario');
-      setAiInsight('');
-    } else {
-      const client = savedClients.find(c => c.id === id);
-      if (client) {
-        setFormData({
-          clientName: client.clientName || '',
-          ref: client.ref || '',
-          phone: client.phone || '',
-          address: client.address || '',
-          discount: client.discount || 0,
-          rentingMonths: client.rentingMonths || 36,
-          items: client.items?.map(i => ({...i, quantity: i.quantity || 1, img: i.img || '', isPdf: i.isPdf || false, fileName: i.fileName || ''})) || []
+      // Average quantities from last 3 orders
+      const last3 = list.slice(0, 3);
+      const sug = {};
+      if (last3.length > 0) {
+        const allIds = new Set(last3.flatMap(o => Object.keys(o.lines || {})));
+        allIds.forEach(pid => {
+          const qtys = last3.map(o => o.lines?.[pid] || 0).filter(q => q > 0);
+          if (qtys.length > 0) sug[pid] = Math.ceil(qtys.reduce((a, b) => a + b, 0) / qtys.length);
         });
-        setView('presupuesto');
       }
-    }
-  };
+      setSuggestions(sug);
+    });
+  }, [user]);
 
-  const handleDeleteClient = async (id) => {
+  // ── CATALOG CRUD ──
+  const saveProduct = async (prod) => {
     if (!user) return;
-    try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'clients', id));
-      if (currentClientId === id) handleLoadClient('nuevo');
-    } catch(err) {
-      console.error("Error al borrar:", err);
-    }
-  };
-
-  const handleGenerarYGuardar = async () => {
-    if (!user) return;
-    
-    // Formatear items antes de guardar
-    const cleanItems = formData.items.filter(p => p.name && p.price).map((p, i) => ({
-      ...p,
-      price: parseFloat(p.price) || 0,
-      quantity: parseInt(p.quantity) || 1,
-      features: Array.isArray(p.features) ? p.features : (p.features ? p.features.split(',').map(f => f.trim()) : [])
-    }));
-
-    const finalData = { ...formData, items: cleanItems };
-    setFormData(finalData);
-
     setSaveStatus('saving');
     try {
-      if (currentClientId === 'nuevo') {
-        const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'clients'), {
-          ...finalData,
-          createdAt: new Date().toISOString(),
-          lastUpdated: new Date().toISOString()
-        });
-        setCurrentClientId(docRef.id);
+      const data = { name: prod.name.trim(), price: parseFloat(prod.price) || 0, photo: prod.photo || '' };
+      if (prod.id) {
+        await setDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'catalog', prod.id), data, { merge: true });
       } else {
-        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'clients', currentClientId), {
-          ...finalData,
-          lastUpdated: new Date().toISOString()
-        }, { merge: true });
+        await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'catalog'), { ...data, createdAt: new Date().toISOString() });
       }
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);
-      setView('presupuesto');
+      setShowForm(false);
+      setEditingProduct(null);
     } catch (e) {
-      console.error("Error Generando:", e);
+      console.error(e);
       setSaveStatus('error');
     }
   };
 
-  const exportToCSV = () => {
-    if (savedClients.length === 0) return;
-    const headers = ["Nombre", "Referencia", "Descuento (%)", "Meses Renting", "Inversion Bruta", "Ultima Actualizacion"];
-    const rows = savedClients.map(c => {
-      const bruto = (c.items || []).reduce((acc, item) => acc + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
-      return [
-        c.clientName, c.ref, c.discount || 0, c.rentingMonths || 36, bruto,
-        c.lastUpdated ? new Date(c.lastUpdated).toLocaleDateString('es-ES') : ''
-      ];
-    });
-    const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Guinus_CRM_${new Date().toLocaleDateString('es-ES')}.csv`;
-    link.click();
+  const deleteProduct = async (id) => {
+    if (!user || !window.confirm('¿Eliminar este producto del catálogo?')) return;
+    await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'catalog', id));
   };
 
-  // IA ✨
-  const generateAiAdvice = async () => {
-    setIsAiLoading(true);
-    setAiInsight("");
-    const apiKey = ""; // API Key gestionada por el entorno
-    const itemsList = formData.items.map(i => i.name).join(', ');
-    const userQuery = `Hola, mi cliente ${formData.clientName} considera este equipo: ${itemsList}. Genera una 'Asesoría Estratégica' corta y potente para hostelería.`;
-    
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: userQuery }] }] })
+  // ── ORDER HELPERS ──
+  const setQty = (pid, val) => {
+    const n = Math.max(0, parseInt(val) || 0);
+    setOrderLines(prev => ({ ...prev, [pid]: n }));
+  };
+
+  const applySuggestions = () => {
+    setOrderLines(prev => {
+      const next = { ...prev };
+      Object.entries(suggestions).forEach(([pid, qty]) => {
+        if (!next[pid]) next[pid] = qty;
       });
-      const data = await response.json();
-      if(data.candidates) {
-        setAiInsight(data.candidates[0].content.parts[0].text);
-      } else {
-        setAiInsight('No se pudo generar la asesoría en este momento.');
-      }
-    } catch (err) {
-      console.error(err);
-      setAiInsight('Error al conectar con el Asesor AI.');
-    } finally {
-      setIsAiLoading(false);
+      return next;
+    });
+  };
+
+  const clearOrder = () => { setOrderLines({}); setOrderNotes(''); };
+
+  const activeLines = Object.entries(orderLines).filter(([, q]) => q > 0);
+  const orderTotal = activeLines.reduce((sum, [pid, qty]) => {
+    return sum + (products.find(p => p.id === pid)?.price || 0) * qty;
+  }, 0);
+
+  // ── SAVE ORDER ──
+  const saveOrder = async () => {
+    if (!user || activeLines.length === 0) return;
+    setSaveStatus('saving');
+    try {
+      const snapshot = products.reduce((acc, p) => {
+        acc[p.id] = { name: p.name, price: p.price, photo: p.photo };
+        return acc;
+      }, {});
+      await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'orders'), {
+        date: orderDate,
+        lines: Object.fromEntries(activeLines),
+        notes: orderNotes,
+        products: snapshot,
+        createdAt: new Date().toISOString(),
+      });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+      clearOrder();
+    } catch (e) {
+      console.error(e);
+      setSaveStatus('error');
     }
   };
 
-  // --- COMPONENTES VISUALES ---
-  const renderHeaderCRM = () => (
-    <div className="max-w-6xl mx-auto mb-4 p-4 bg-indigo-900 rounded-[2rem] text-white flex flex-col md:flex-row gap-6 items-center justify-between print:hidden shadow-xl border border-indigo-700">
-      <div className="flex items-center gap-3">
-        <FolderOpen size={20} className="text-indigo-400" />
-        <p className="text-xs font-black uppercase tracking-widest text-indigo-300">CRM GUIÑUS</p>
-      </div>
-      
-      <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-        <button 
-          onClick={() => handleLoadClient('nuevo')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-xl font-black transition-all text-xs uppercase tracking-wider border whitespace-nowrap ${view === 'formulario' && currentClientId === 'nuevo' ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg' : 'bg-indigo-800 text-indigo-200 border-indigo-600 hover:bg-indigo-700'}`}
-        >
-          <Plus size={16} /> Nuevo
-        </button>
+  // ── WHATSAPP ──
+  const sendWhatsApp = () => {
+    if (activeLines.length === 0) return;
+    const dateFmt = new Date(orderDate + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const body = activeLines.map(([pid, qty]) => {
+      const p = products.find(x => x.id === pid);
+      return `• ${p?.name || pid} x ${qty} ud`;
+    }).join('\n');
+    const text = `🛒 *PEDIDO GUIÑUS – ${dateFmt}*\n\n${body}\n\n💰 *Total aprox: ${orderTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€*${orderNotes ? `\n\n📝 ${orderNotes}` : ''}`;
 
-        <button 
-          onClick={() => setView('crm')}
-          className={`flex items-center gap-2 px-5 py-3 rounded-xl font-black transition-all text-xs uppercase tracking-wider border whitespace-nowrap ${view === 'crm' ? 'bg-blue-600 text-white border-blue-500 shadow-lg' : 'bg-indigo-800 text-indigo-200 border-indigo-600 hover:bg-indigo-700'}`}
-        >
-          <Users size={16} /> Mis Clientes ({savedClients.length})
-        </button>
+    navigator.clipboard.writeText(text)
+      .then(() => alert('✅ Copiado al portapapeles. Pégalo en WhatsApp.'))
+      .catch(() => {
+        const el = document.createElement('textarea');
+        el.value = text;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        alert('✅ Copiado al portapapeles. Pégalo en WhatsApp.');
+      });
+  };
 
-        <button onClick={exportToCSV} className="flex items-center gap-2 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 px-5 py-3 rounded-xl font-black transition-all text-xs uppercase tracking-wider border border-indigo-600 whitespace-nowrap">
-          <Download size={16} /> Exportar
-        </button>
+  // ── SHARED HEADER ──
+  const Header = () => (
+    <header className="bg-[#0d0e10] px-4 py-3 flex items-center justify-between border-b border-slate-800 sticky top-0 z-40">
+      <span className="text-2xl font-black text-yellow-500 italic tracking-tighter select-none">GUIÑUS</span>
+      <nav className="flex bg-slate-900 rounded-2xl p-1 gap-0.5">
+        {[
+          { id: 'pedido', icon: ClipboardList, label: 'Pedido' },
+          { id: 'catalogo', icon: Package, label: 'Catálogo' },
+          { id: 'historial', icon: History, label: 'Historial' },
+        ].map(({ id, icon: Icon, label }) => (
+          <button
+            key={id}
+            onClick={() => setView(id)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${view === id ? 'bg-yellow-500 text-slate-900' : 'text-slate-500 hover:text-white'}`}
+          >
+            <Icon size={13} />{label}
+          </button>
+        ))}
+      </nav>
+      <div className="w-8 flex justify-center">
+        {saveStatus === 'saving' && <Loader2 size={15} className="text-blue-400 animate-spin" />}
+        {saveStatus === 'saved' && <CheckCircle size={15} className="text-emerald-400" />}
+        {saveStatus === 'idle' && <Cloud size={15} className="text-slate-700" />}
       </div>
-
-      <div className="flex items-center gap-2 px-4 py-2 bg-indigo-950 rounded-full border border-indigo-800 hidden md:flex">
-        {saveStatus === 'saving' && <Loader2 size={14} className="text-blue-400 animate-spin" />}
-        {saveStatus === 'saved' && <CheckCircle size={14} className="text-emerald-400" />}
-        {saveStatus === 'idle' && <Cloud size={14} className="text-indigo-400" />}
-        <span className="text-[9px] font-black uppercase tracking-widest text-indigo-300">
-          {saveStatus === 'saving' ? 'Guardando' : saveStatus === 'saved' ? 'Guardado' : 'Online'}
-        </span>
-      </div>
-    </div>
+    </header>
   );
 
-  if (view === 'crm') {
+  // ══ VIEW: PEDIDO ══════════════════════════════════════════════════════════════
+  if (view === 'pedido') {
     return (
-      <div className="min-h-screen bg-slate-50 p-2 md:p-8 font-sans">
-        {renderHeaderCRM()}
-        <div className="max-w-6xl mx-auto mt-8">
-          <div className="mb-8">
-            <h2 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-              <List className="text-indigo-600" /> Base de Datos de Clientes
-            </h2>
-            <p className="text-sm text-slate-500 font-medium mt-2">Gestiona tus prospectos, carga presupuestos anteriores o limpia el historial.</p>
-          </div>
+      <div className="min-h-screen bg-[#0a0b0d] text-white font-sans flex flex-col">
+        <Header />
 
-          <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr className="text-[11px] font-black uppercase text-slate-400 tracking-widest">
-                    <th className="p-6">Cliente / Empresa</th>
-                    <th className="p-6">Referencia</th>
-                    <th className="p-6 text-right">Inversión (con IVA)</th>
-                    <th className="p-6 text-center">Última Modificación</th>
-                    <th className="p-6 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {savedClients.length === 0 ? (
-                    <tr>
-                      <td colSpan="5" className="p-12 text-center text-slate-400 font-bold text-lg">
-                        La nube está vacía. Empieza creando tu primer presupuesto.
-                      </td>
-                    </tr>
-                  ) : savedClients.map(c => {
-                    const bruto = (c.items || []).reduce((acc, item) => acc + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
-                    const descuento = bruto * ((c.discount || 0) / 100);
-                    const total = (bruto - descuento) * 1.21;
-                    return (
-                      <tr key={c.id} className="hover:bg-slate-50 transition-colors group">
-                        <td className="p-6 font-black text-slate-800">{c.clientName || 'Sin Nombre'}</td>
-                        <td className="p-6 text-sm text-slate-500 font-bold">{c.ref || '---'}</td>
-                        <td className="p-6 text-right text-lg font-black text-emerald-600">{total.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</td>
-                        <td className="p-6 text-center text-sm text-slate-500">{c.lastUpdated ? new Date(c.lastUpdated).toLocaleDateString('es-ES') : '---'}</td>
-                        <td className="p-6 text-right">
-                          <button onClick={() => handleLoadClient(c.id)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-md">
-                            Cargar
-                          </button>
-                          <button onClick={() => handleDeleteClient(c.id)} className="ml-3 bg-red-50 text-red-600 px-4 py-2.5 rounded-xl font-bold text-xs hover:bg-red-100 transition-all opacity-0 group-hover:opacity-100">
-                            Borrar
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+        <div className="flex-1 p-4 max-w-xl mx-auto w-full" style={{ paddingBottom: activeLines.length > 0 ? '9rem' : '2rem' }}>
+
+          {/* Date + notes */}
+          <div className="bg-[#141618] rounded-2xl p-4 mb-4 border border-slate-800 flex gap-3">
+            <div className="flex-1">
+              <label className="block text-[10px] font-black text-slate-600 uppercase mb-1.5 tracking-widest">Fecha</label>
+              <input
+                type="date"
+                value={orderDate}
+                onChange={e => setOrderDate(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-bold text-sm focus:outline-none focus:border-yellow-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] font-black text-slate-600 uppercase mb-1.5 tracking-widest">Notas</label>
+              <input
+                value={orderNotes}
+                onChange={e => setOrderNotes(e.target.value)}
+                placeholder="Urgente, observaciones..."
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-bold text-sm placeholder:text-slate-700 focus:outline-none focus:border-yellow-500"
+              />
             </div>
           </div>
+
+          {/* Suggestions banner */}
+          {Object.keys(suggestions).length > 0 && (
+            <button
+              onClick={applySuggestions}
+              className="w-full bg-indigo-950/60 border border-indigo-800/50 text-indigo-300 rounded-2xl p-3 mb-4 flex items-center gap-3 hover:bg-indigo-950 transition-colors text-sm font-bold"
+            >
+              <Star size={15} className="text-indigo-400 flex-shrink-0" />
+              <span>Aplicar sugerencias del historial</span>
+              <span className="ml-auto text-[10px] text-indigo-600 hidden sm:block">últimos 3 pedidos</span>
+            </button>
+          )}
+
+          {/* Product list */}
+          {products.length === 0 ? (
+            <div className="text-center py-20 text-slate-700">
+              <Package size={52} className="mx-auto mb-4 opacity-30" />
+              <p className="font-bold text-lg mb-1 text-slate-500">Sin productos</p>
+              <p className="text-sm mb-5">Añade productos al catálogo primero</p>
+              <button onClick={() => setView('catalogo')} className="bg-yellow-500 text-slate-900 px-6 py-3 rounded-xl font-black text-sm hover:bg-yellow-400">
+                Ir al Catálogo →
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {products.map(prod => {
+                const qty = orderLines[prod.id] || 0;
+                const sug = suggestions[prod.id];
+                const active = qty > 0;
+                return (
+                  <div
+                    key={prod.id}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${active ? 'bg-yellow-500/10 border-yellow-500/25' : 'bg-[#141618] border-slate-800'}`}
+                  >
+                    {/* Thumbnail */}
+                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-800 flex-shrink-0">
+                      {prod.photo
+                        ? <img src={prod.photo} alt={prod.name} className="w-full h-full object-cover" />
+                        : <div className="w-full h-full flex items-center justify-center"><Package size={18} className="text-slate-600" /></div>}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-black text-sm truncate ${active ? 'text-white' : 'text-slate-300'}`}>{prod.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[11px] text-slate-600 font-bold">
+                          {prod.price?.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€/ud
+                        </span>
+                        {sug && qty === 0 && (
+                          <span className="text-[10px] bg-indigo-950 text-indigo-400 px-1.5 py-0.5 rounded-full font-bold border border-indigo-800/50">
+                            💡 {sug} sugerido
+                          </span>
+                        )}
+                        {active && (
+                          <span className="text-[11px] text-yellow-400 font-black">
+                            = {((prod.price || 0) * qty).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Qty controls */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => setQty(prod.id, qty - 1)}
+                        className={`w-8 h-8 rounded-lg font-black text-base flex items-center justify-center transition-all select-none ${qty > 0 ? 'bg-yellow-500 text-slate-900' : 'bg-slate-800 text-slate-600'}`}
+                      >−</button>
+                      <input
+                        type="number"
+                        value={qty || ''}
+                        onChange={e => setQty(prod.id, e.target.value)}
+                        placeholder="0"
+                        className="w-11 text-center bg-slate-900 border border-slate-700 rounded-lg py-1.5 font-black text-sm text-white focus:outline-none focus:border-yellow-500"
+                      />
+                      <button
+                        onClick={() => setQty(prod.id, qty + 1)}
+                        className="w-8 h-8 rounded-lg bg-yellow-500 text-slate-900 font-black text-base flex items-center justify-center select-none hover:bg-yellow-400 transition-all"
+                      >+</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
+
+        {/* Bottom action bar */}
+        {activeLines.length > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 bg-[#0d0e10]/95 backdrop-blur border-t border-slate-800 p-4 z-30">
+            <div className="max-w-xl mx-auto">
+              <div className="flex items-end justify-between mb-3">
+                <div>
+                  <p className="text-[10px] text-slate-600 font-black uppercase">{activeLines.length} productos · {activeLines.reduce((s, [, q]) => s + q, 0)} unidades</p>
+                  <p className="text-3xl font-black text-yellow-500 tracking-tighter leading-none mt-0.5">
+                    {orderTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+                  </p>
+                </div>
+                <button onClick={clearOrder} className="text-slate-700 hover:text-slate-400 flex items-center gap-1.5 text-xs font-bold pb-1">
+                  <RotateCcw size={13} /> Limpiar
+                </button>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={saveOrder}
+                  className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-2xl font-black text-sm transition-all border border-slate-700"
+                >
+                  <Save size={15} /> Guardar
+                </button>
+                <button
+                  onClick={sendWhatsApp}
+                  className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 text-white py-3.5 rounded-2xl font-black text-sm transition-all"
+                >
+                  <MessageCircle size={15} /> WhatsApp
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
-  if (view === 'formulario') {
+  // ══ VIEW: CATÁLOGO ════════════════════════════════════════════════════════════
+  if (view === 'catalogo') {
     return (
-      <div className="min-h-screen bg-slate-50 p-2 md:p-8 font-sans">
-        {renderHeaderCRM()}
-        <div className="max-w-3xl mx-auto mt-8">
-          <div className="mb-10 flex items-center justify-between">
+      <div className="min-h-screen bg-[#0a0b0d] text-white font-sans">
+        <Header />
+        <div className="p-4 max-w-xl mx-auto pb-10">
+          <div className="flex justify-between items-center my-5">
             <div>
-              <h2 className="text-2xl font-black text-slate-800 tracking-tight">Constructor de Presupuesto</h2>
-              <p className="text-sm text-slate-400 font-medium">Define el cliente y las máquinas para guardar en la nube.</p>
+              <h2 className="text-2xl font-black text-white">Catálogo</h2>
+              <p className="text-xs text-slate-600 font-bold mt-0.5">{products.length} productos</p>
             </div>
+            <button
+              onClick={() => { setEditingProduct({}); setShowForm(true); }}
+              className="flex items-center gap-2 bg-yellow-500 text-slate-900 px-5 py-2.5 rounded-xl font-black text-sm hover:bg-yellow-400 transition-all"
+            >
+              <Plus size={15} /> Añadir
+            </button>
           </div>
 
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 mb-6 shadow-sm">
-            <h3 className="font-black text-slate-800 text-lg mb-6 flex items-center gap-3"><User size={18} className="text-slate-600"/> Datos del Cliente</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Nombre / Empresa *</label>
-                <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" type="text" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} placeholder="Ej. PEPE APARICIO" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Referencia interna *</label>
-                <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" type="text" value={formData.ref} onChange={e => setFormData({...formData, ref: e.target.value})} placeholder="Ej. REF-2024-01" />
-              </div>
+          {products.length === 0 ? (
+            <div className="text-center py-20 text-slate-700">
+              <Package size={56} className="mx-auto mb-4 opacity-20" />
+              <p className="font-bold text-lg text-slate-500 mb-1">Catálogo vacío</p>
+              <p className="text-sm">Añade tus productos para empezar</p>
             </div>
-          </div>
-
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 mb-6 shadow-sm">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-black text-slate-800 text-lg flex items-center gap-3"><Package size={18} className="text-slate-600"/> Maquinaria / Servicios</h3>
-              <button onClick={() => setFormData({...formData, items: [...formData.items, { id: Date.now(), name: '', price: '', quantity: 1, features: '', img: '', isPdf: false, fileName: '' }]})} className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-slate-700">
-                <Plus size={14} /> Añadir Línea
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              {formData.items.map((prod, idx) => (
-                <div key={prod.id} className="bg-slate-50 p-5 rounded-[1.5rem] border border-slate-100 relative group">
-                  {formData.items.length > 1 && (
-                    <button onClick={() => setFormData({...formData, items: formData.items.filter(p => p.id !== prod.id)})} className="absolute top-4 right-4 text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
-                  )}
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                    <div className="md:col-span-6">
-                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Producto *</label>
-                      <input className="w-full p-2 bg-white border border-slate-200 rounded-lg" value={prod.name} onChange={e => { const newItems = [...formData.items]; newItems[idx].name = e.target.value; setFormData({...formData, items: newItems}); }} placeholder="Ej. Crepera Estándar" />
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {products.map(prod => (
+                <div key={prod.id} className="bg-[#141618] rounded-2xl border border-slate-800 overflow-hidden group">
+                  <div className="aspect-square bg-slate-900 relative overflow-hidden">
+                    {prod.photo
+                      ? <img src={prod.photo} alt={prod.name} className="w-full h-full object-cover" />
+                      : <div className="w-full h-full flex items-center justify-center"><Package size={36} className="text-slate-700" /></div>}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => { setEditingProduct(prod); setShowForm(true); }}
+                        className="bg-white text-slate-900 p-2.5 rounded-xl hover:bg-yellow-400 transition-colors"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => deleteProduct(prod.id)}
+                        className="bg-red-600 text-white p-2.5 rounded-xl hover:bg-red-500 transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Cantidad *</label>
-                      <input className="w-full p-2 bg-white border border-slate-200 rounded-lg" type="number" min="1" value={prod.quantity || 1} onChange={e => { const newItems = [...formData.items]; newItems[idx].quantity = e.target.value; setFormData({...formData, items: newItems}); }} placeholder="1" />
-                    </div>
-                    <div className="md:col-span-4">
-                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Precio Unit. (€) *</label>
-                      <input className="w-full p-2 bg-white border border-slate-200 rounded-lg" type="number" value={prod.price} onChange={e => { const newItems = [...formData.items]; newItems[idx].price = e.target.value; setFormData({...formData, items: newItems}); }} placeholder="353.00" />
-                    </div>
-                    <div className="md:col-span-6">
-                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Referencia / SKU</label>
-                      <input className="w-full p-2 bg-white border border-slate-200 rounded-lg" value={prod.ref || ''} onChange={e => { const newItems = [...formData.items]; newItems[idx].ref = e.target.value; setFormData({...formData, items: newItems}); }} placeholder="Ej. REF-123" />
-                    </div>
-                    <div className="md:col-span-6">
-                      <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Imagen o Archivo (JPG, PNG, PDF)</label>
-                      <div className="flex gap-2">
-                        <input className="w-full p-2 bg-white border border-slate-200 rounded-lg" value={prod.img || ''} onChange={e => { 
-                          const newItems = [...formData.items]; 
-                          newItems[idx].img = e.target.value; 
-                          newItems[idx].isPdf = e.target.value.toLowerCase().endsWith('.pdf');
-                          newItems[idx].fileName = '';
-                          setFormData({...formData, items: newItems}); 
-                        }} placeholder="URL o adjunta archivo ->" />
-                        
-                        <label className="flex items-center justify-center bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-lg cursor-pointer transition-colors w-12 flex-shrink-0" title="Subir archivo temporal">
-                          <Upload size={18} />
-                          <input type="file" className="hidden" accept=".jpg,.jpeg,.png,.pdf" onChange={(e) => {
-                            const file = e.target.files[0];
-                            if (file) {
-                              const localUrl = URL.createObjectURL(file);
-                              const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-                              const newItems = [...formData.items];
-                              newItems[idx].img = localUrl;
-                              newItems[idx].isPdf = isPdf;
-                              newItems[idx].fileName = file.name;
-                              setFormData({...formData, items: newItems});
-                            }
-                          }} />
-                        </label>
-                      </div>
-                      {prod.fileName && <p className="text-[9px] text-emerald-600 font-bold mt-1">✓ Archivo local: {prod.fileName} (Memoria Temporal)</p>}
-                    </div>
+                  </div>
+                  <div className="p-3">
+                    <p className="font-black text-sm text-white truncate">{prod.name}</p>
+                    <p className="text-yellow-500 font-black text-sm mt-0.5">
+                      {prod.price?.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+                    </p>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-
-          <button 
-            onClick={handleGenerarYGuardar}
-            disabled={!formData.clientName || !formData.ref}
-            className="w-full bg-yellow-500 text-slate-900 py-5 rounded-[2rem] font-black text-lg italic tracking-widest uppercase hover:bg-yellow-400 transition-all active:scale-[0.99] disabled:opacity-40 shadow-xl"
-          >
-            Guardar en Nube y Generar PDF →
-          </button>
+          )}
         </div>
+
+        {showForm && (
+          <ProductForm
+            product={editingProduct}
+            onSave={saveProduct}
+            onClose={() => { setShowForm(false); setEditingProduct(null); }}
+          />
+        )}
       </div>
     );
   }
 
-  // --- CÁLCULOS VISTA PRESUPUESTO ---
-  const subtotalBruto = formData.items.reduce((acc, item) => acc + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
-  const discountAmount = subtotalBruto * (formData.discount / 100);
-  const subtotalNeto = subtotalBruto - discountAmount;
-  const iva = subtotalNeto * 0.21;
-  const totalInversion = subtotalNeto + iva;
-
+  // ══ VIEW: HISTORIAL ═══════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-slate-100 p-2 md:p-8 font-sans text-slate-900 print:bg-white print:p-0">
-      {renderHeaderCRM()}
-      
-      {/* PANEL DE CONTROL VISTA */}
-      <div className="max-w-6xl mx-auto mb-6 p-6 bg-slate-900 rounded-[2.5rem] text-white flex flex-col md:flex-row gap-8 items-center justify-between print:hidden shadow-2xl border border-yellow-500/30">
-        <button onClick={() => setView('formulario')} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm font-bold">
-          <ArrowLeft size={16} /> Editar Artículos
-        </button>
-
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-yellow-500 rounded-xl text-black"><Percent size={20} /></div>
-          <div>
-            <p className="text-[10px] font-black uppercase text-slate-400">Descuento</p>
-            <div className="flex items-center gap-3">
-              <input type="range" min="0" max="15" value={formData.discount} onChange={e => setFormData({...formData, discount: Number(e.target.value)})} className="w-32 accent-yellow-500" />
-              <span className="font-black text-yellow-500 text-lg">{formData.discount}%</span>
-            </div>
-          </div>
+    <div className="min-h-screen bg-[#0a0b0d] text-white font-sans">
+      <Header />
+      <div className="p-4 max-w-xl mx-auto pb-10">
+        <div className="my-5">
+          <h2 className="text-2xl font-black text-white">Historial</h2>
+          <p className="text-xs text-slate-600 font-bold mt-0.5">{orders.length} pedidos guardados</p>
         </div>
 
-        <button onClick={generateAiAdvice} disabled={isAiLoading} className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black hover:bg-indigo-500 transition-all disabled:opacity-50">
-          {isAiLoading ? <Loader2 size={18} className="animate-spin" /> : <Brain size={18} />} IA Estratégica
-        </button>
-      </div>
-
-      {/* DOCUMENTO FINAL */}
-      <div className="max-w-6xl mx-auto bg-white shadow-2xl rounded-[3rem] overflow-hidden border border-slate-200 print:shadow-none print:border-none">
-        <header className="bg-[#121416] p-10 text-white flex justify-between items-center relative">
-          <div className="absolute top-0 left-0 w-3 h-full bg-yellow-500"></div>
-          <div className="z-10">
-            <h1 className="text-6xl font-black tracking-tighter text-yellow-500 italic leading-none">GUIÑUS</h1>
-            <p className="text-[12px] text-slate-400 mt-2 uppercase tracking-[0.8em] font-bold opacity-60">Chef Excellence Equipment</p>
+        {orders.length === 0 ? (
+          <div className="text-center py-20 text-slate-700">
+            <History size={56} className="mx-auto mb-4 opacity-20" />
+            <p className="font-bold text-lg text-slate-500 mb-1">Sin pedidos aún</p>
+            <p className="text-sm">Guarda un pedido y aparecerá aquí</p>
           </div>
-          <div className="text-right z-10">
-            <p className="text-2xl font-black text-white">667 654 688</p>
-            <p className="text-[10px] uppercase opacity-40 font-bold tracking-widest mt-1">Coslada · Madrid</p>
-          </div>
-        </header>
+        ) : (
+          <div className="space-y-3">
+            {orders.map(order => {
+              const totalUnits = Object.values(order.lines || {}).reduce((a, b) => a + b, 0);
+              const totalPrice = Object.entries(order.lines || {}).reduce((sum, [pid, qty]) => {
+                const info = order.products?.[pid] || products.find(p => p.id === pid);
+                return sum + (info?.price || 0) * qty;
+              }, 0);
+              const isExpanded = expandedOrder === order.id;
+              const dateFmt = order.date
+                ? new Date(order.date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+                : '---';
 
-        <section className="px-10 py-8 bg-slate-50 flex justify-between items-center border-b border-slate-200">
-          <div className="flex gap-6 items-center">
-            <div className="bg-slate-900 p-5 rounded-[2.2rem] text-yellow-500"><User size={32} /></div>
-            <div>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Presupuesto para:</p>
-              <h2 className="text-3xl font-black text-slate-800 tracking-tighter uppercase">{formData.clientName}</h2>
-              <span className="text-[10px] bg-slate-200 px-4 py-1.5 rounded-full font-black text-slate-600 mt-2 inline-block uppercase">Ref: {formData.ref}</span>
-            </div>
-          </div>
-        </section>
-
-        {aiInsight && (
-          <section className="px-10 py-8 bg-indigo-50/50 border-b border-indigo-100 print:hidden">
-            <div className="flex items-center gap-3 mb-4 text-indigo-900">
-              <Brain size={24} className="text-indigo-600"/>
-              <h3 className="text-xl font-black uppercase italic">Asesoría Estratégica IA</h3>
-            </div>
-            <p className="text-indigo-900/80 font-medium whitespace-pre-line leading-relaxed italic">{aiInsight}</p>
-          </section>
-        )}
-
-        <div className="px-10 py-8">
-          <table className="w-full border-separate border-spacing-y-4">
-            <thead>
-              <tr className="text-[11px] text-slate-400 uppercase tracking-[0.3em] font-black italic border-b border-slate-100">
-                <th className="pb-4 text-left px-6">Línea de Equipamiento</th>
-                <th className="pb-4 text-center px-6">Cant.</th>
-                <th className="pb-4 text-right px-6">Precio Ud.</th>
-                <th className="pb-4 text-right px-6">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {formData.items.map(item => (
-                <tr key={item.id} className="group">
-                  <td className="py-5 px-6 bg-slate-50/50 rounded-l-[2rem] border-y border-l border-slate-100">
-                    <div className="flex items-center gap-6">
-                      {item.isPdf ? (
-                        <div className="w-16 h-16 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 shadow-sm" title="Documento PDF Adjunto">
-                          <FileText size={24} />
-                        </div>
-                      ) : item.img ? (
-                        <img src={item.img} alt={item.name} className="w-16 h-16 rounded-2xl object-cover shadow-sm bg-white" />
-                      ) : (
-                        <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-300 shadow-sm">
-                          <Package size={24} />
-                        </div>
-                      )}
-                      <div>
-                        <h3 className="text-base font-black text-slate-900">{item.name}</h3>
-                        {item.ref && <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Ref: {item.ref}</p>}
-                      </div>
+              return (
+                <div key={order.id} className="bg-[#141618] rounded-2xl border border-slate-800 overflow-hidden">
+                  <button
+                    className="w-full flex items-center gap-4 p-4 text-left hover:bg-slate-800/30 transition-colors"
+                    onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                  >
+                    <div className="bg-slate-900 rounded-xl p-2.5 border border-slate-700">
+                      <ClipboardList size={17} className="text-yellow-500" />
                     </div>
-                  </td>
-                  <td className="py-5 px-6 text-center bg-slate-50/50 border-y border-slate-100 font-black text-slate-700">
-                    {item.quantity || 1}
-                  </td>
-                  <td className="py-5 px-6 text-right bg-slate-50/50 border-y border-slate-100 font-bold text-slate-500">
-                    {parseFloat(item.price || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
-                  </td>
-                  <td className="py-5 px-6 text-right bg-slate-50/50 rounded-r-[2rem] border-y border-r border-slate-100">
-                    <p className="text-xl font-black text-slate-900 tracking-tighter">{((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)).toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</p>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-black text-white text-sm capitalize">{dateFmt}</p>
+                      <p className="text-[11px] text-slate-600 font-bold mt-0.5">
+                        {totalUnits} uds · {totalPrice.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€
+                      </p>
+                    </div>
+                    {isExpanded
+                      ? <ChevronUp size={17} className="text-slate-600 flex-shrink-0" />
+                      : <ChevronDown size={17} className="text-slate-600 flex-shrink-0" />}
+                  </button>
 
-        <footer className="bg-[#121416] p-10 text-white">
-          <div className="flex flex-col xl:flex-row justify-between gap-10">
-            <div className="flex-1 bg-yellow-500 p-8 rounded-[3rem] text-slate-900 shadow-2xl flex flex-col justify-center">
-              <p className="text-xs font-black uppercase tracking-widest mb-2 italic">Información Logística</p>
-              <h4 className="text-3xl md:text-4xl font-black tracking-tighter leading-tight mb-4 uppercase">Entregas en Site</h4>
-              <p className="text-sm font-black uppercase opacity-80">Pendiente de valorar el almacenaje.</p>
-            </div>
-            <div className="flex-1 bg-slate-800/40 p-10 rounded-[3.5rem] border border-slate-700/50">
-              <div className="flex justify-between text-neutral-400 text-[11px] font-black uppercase mb-4 tracking-[0.4em]">
-                <span>Inversión Bruta</span><span className="text-white">{subtotalBruto.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
-              </div>
-              {formData.discount > 0 && (
-                <div className="flex justify-between text-green-400 text-[11px] font-black uppercase mb-4 tracking-[0.4em]">
-                  <span>Ahorro ({formData.discount}%)</span><span>-{discountAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
+                  {isExpanded && (
+                    <div className="border-t border-slate-800 px-4 pb-4 pt-3">
+                      {order.notes && (
+                        <p className="text-xs text-slate-500 italic mb-3 bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+                          📝 {order.notes}
+                        </p>
+                      )}
+                      <div className="space-y-2 mb-4">
+                        {Object.entries(order.lines || {}).map(([pid, qty]) => {
+                          const info = order.products?.[pid] || products.find(p => p.id === pid);
+                          return (
+                            <div key={pid} className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-lg overflow-hidden bg-slate-900 flex-shrink-0 border border-slate-800">
+                                {info?.photo
+                                  ? <img src={info.photo} alt="" className="w-full h-full object-cover" />
+                                  : <div className="w-full h-full flex items-center justify-center"><Package size={14} className="text-slate-700" /></div>}
+                              </div>
+                              <span className="flex-1 text-sm text-slate-300 font-bold truncate">{info?.name || pid}</span>
+                              <span className="text-sm font-black text-yellow-500 flex-shrink-0">× {qty}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        onClick={() => { setOrderLines({ ...order.lines }); setView('pedido'); }}
+                        className="w-full bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all border border-yellow-500/20"
+                      >
+                        Usar como base para nuevo pedido
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="flex justify-between text-neutral-300 text-[11px] font-black uppercase mb-4 tracking-[0.4em]">
-                <span>Base Imponible</span><span className="text-white">{subtotalNeto.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
-              </div>
-              <div className="flex justify-between text-neutral-400 text-[11px] font-black uppercase mb-4 tracking-[0.4em]">
-                <span>IVA (21%)</span><span className="text-white">{iva.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
-              </div>
-              <div className="flex justify-between items-end mt-8 border-t border-slate-700 pt-6">
-                <span className="text-xl font-black text-yellow-500 uppercase italic">Total Inversión</span>
-                <span className="text-5xl font-black text-white tracking-tighter">{totalInversion.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€</span>
-              </div>
-            </div>
+              );
+            })}
           </div>
-          <div className="mt-12 flex flex-col items-end gap-4 print:hidden">
-            <div className="flex items-center gap-4 bg-blue-50 text-blue-800 px-6 py-3 rounded-xl border border-blue-100 shadow-sm">
-              <span className="text-sm font-bold italic">💡 Instrucción: Al hacer clic abajo, elige "Destino: Guardar como PDF" en la ventana que se abrirá.</span>
-            </div>
-            <button onClick={() => window.print()} className="flex items-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-sm hover:bg-slate-800 shadow-xl transition-all active:scale-95 border-2 border-slate-900 hover:border-yellow-500 group">
-              <Download size={22} className="group-hover:-translate-y-1 transition-transform" />
-              Descargar PDF para el Cliente
-            </button>
-          </div>
-        </footer>
+        )}
       </div>
     </div>
   );
 };
 
-export default App
-
+export default App;
