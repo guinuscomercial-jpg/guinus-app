@@ -43,17 +43,14 @@ const ProductForm = ({ product, onSave, onClose }) => {
 
   const handleFile = async (e) => {
     const file = e.target.files[0];
-    if (file) setForm(f => ({ ...f, photo: '' })) || setTimeout(async () => {
-      const compressed = await compressImage(file);
-      setForm(f => ({ ...f, photo: compressed }));
-    }, 0);
+    if (!file) return;
     const compressed = await compressImage(file);
     setForm(f => ({ ...f, photo: compressed }));
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-[#1a1c20] rounded-t-3xl sm:rounded-3xl p-6 w-full sm:max-w-sm border border-slate-700 shadow-2xl">
+    <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 overflow-y-auto">
+      <div className="bg-[#1a1c20] rounded-t-3xl sm:rounded-3xl p-6 w-full sm:max-w-sm border border-slate-700 shadow-2xl mb-0 sm:mb-0" style={{marginTop: 'auto'}}>
         <div className="flex justify-between items-center mb-5">
           <h3 className="font-black text-xl text-white">{product?.id ? 'Editar Producto' : 'Nuevo Producto'}</h3>
           <button onClick={onClose} className="text-slate-500 hover:text-white p-1"><X size={22} /></button>
@@ -90,7 +87,6 @@ const ProductForm = ({ product, onSave, onClose }) => {
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="Ej. Coca-Cola 1L"
-              autoFocus
             />
           </div>
           <div>
@@ -534,6 +530,7 @@ const App = () => {
 
         {showForm && (
           <ProductForm
+            key={editingProduct?.id || 'new'}
             product={editingProduct}
             onSave={saveProduct}
             onClose={() => { setShowForm(false); setEditingProduct(null); }}
