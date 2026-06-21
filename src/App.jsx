@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import html2pdf from 'html2pdf.js';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, addDoc, query, deleteDoc } from 'firebase/firestore';
@@ -37,6 +38,8 @@ const App = () => {
 
   const [aiInsight, setAiInsight] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const presupuestoRef = useRef(null);
 
   // 1. AUTENTICACIÓN SEGURA
   useEffect(() => {
@@ -212,6 +215,24 @@ const App = () => {
     }
   };
 
+  const handleDownloadPDF = async () => {
+    const element = presupuestoRef.current;
+    if (!element) return;
+    setIsPdfLoading(true);
+    const excludeEls = element.querySelectorAll('.pdf-exclude');
+    excludeEls.forEach(el => (el.style.visibility = 'hidden'));
+    const opt = {
+      margin: [5, 5, 5, 5],
+      filename: `Presupuesto_GUINUS_${formData.clientName || 'Cliente'}_${new Date().toLocaleDateString('es-ES').replace(/\//g, '-')}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    await html2pdf().set(opt).from(element).save();
+    excludeEls.forEach(el => (el.style.visibility = ''));
+    setIsPdfLoading(false);
+  };
+
   // --- COMPONENTES VISUALES ---
   const renderHeaderCRM = () => (
     <div className="max-w-6xl mx-auto mb-4 p-4 bg-indigo-900 rounded-[2rem] text-white flex flex-col md:flex-row gap-6 items-center justify-between print:hidden shadow-xl border border-indigo-700">
@@ -332,7 +353,7 @@ const App = () => {
                 <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" type="text" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} placeholder="Ej. PEPE APARICIO" />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Referencia interna *</label>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Referencia interna</label>
                 <input className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" type="text" value={formData.ref} onChange={e => setFormData({...formData, ref: e.target.value})} placeholder="Ej. REF-2024-01" />
               </div>
             </div>
@@ -404,9 +425,9 @@ const App = () => {
             </div>
           </div>
 
-          <button 
+          <button
             onClick={handleGenerarYGuardar}
-            disabled={!formData.clientName || !formData.ref}
+            disabled={!formData.clientName}
             className="w-full bg-yellow-500 text-slate-900 py-5 rounded-[2rem] font-black text-lg italic tracking-widest uppercase hover:bg-yellow-400 transition-all active:scale-[0.99] disabled:opacity-40 shadow-xl"
           >
             Guardar en Nube y Generar PDF →
@@ -450,7 +471,7 @@ const App = () => {
       </div>
 
       {/* DOCUMENTO FINAL */}
-      <div className="max-w-6xl mx-auto bg-white shadow-2xl rounded-[3rem] overflow-hidden border border-slate-200 print:shadow-none print:border-none">
+      <div ref={presupuestoRef} className="max-w-6xl mx-auto bg-white shadow-2xl rounded-[3rem] overflow-hidden border border-slate-200 print:shadow-none print:border-none">
         <header className="bg-[#121416] p-10 text-white flex justify-between items-center relative">
           <div className="absolute top-0 left-0 w-3 h-full bg-yellow-500"></div>
           <div className="z-10">
@@ -559,13 +580,10 @@ const App = () => {
               </div>
             </div>
           </div>
-          <div className="mt-12 flex flex-col items-end gap-4 print:hidden">
-            <div className="flex items-center gap-4 bg-blue-50 text-blue-800 px-6 py-3 rounded-xl border border-blue-100 shadow-sm">
-              <span className="text-sm font-bold italic">💡 Instrucción: Al hacer clic abajo, elige "Destino: Guardar como PDF" en la ventana que se abrirá.</span>
-            </div>
-            <button onClick={() => window.print()} className="flex items-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-sm hover:bg-slate-800 shadow-xl transition-all active:scale-95 border-2 border-slate-900 hover:border-yellow-500 group">
-              <Download size={22} className="group-hover:-translate-y-1 transition-transform" />
-              Descargar PDF para el Cliente
+          <div className="mt-12 flex flex-col items-end gap-4 pdf-exclude">
+            <button onClick={handleDownloadPDF} disabled={isPdfLoading} className="flex items-center gap-3 bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-sm hover:bg-slate-800 shadow-xl transition-all active:scale-95 border-2 border-slate-900 hover:border-yellow-500 group disabled:opacity-50">
+              {isPdfLoading ? <Loader2 size={22} className="animate-spin" /> : <Download size={22} className="group-hover:-translate-y-1 transition-transform" />}
+              {isPdfLoading ? 'Generando PDF...' : 'Descargar PDF para el Cliente'}
             </button>
           </div>
         </footer>
@@ -575,4 +593,3 @@ const App = () => {
 };
 
 export default App
-
